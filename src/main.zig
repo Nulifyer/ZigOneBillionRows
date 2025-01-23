@@ -1,40 +1,128 @@
 const std = @import("std");
-const chanz = @import("./channel.zig");
-
-fn worker(c: *chanz.Chan(usize), i: usize) !void {
-    while (!c.closed) {
-        const val = try c.recv();
-        std.time.sleep(2 * std.time.ms_per_s);
-        std.debug.print("{d} Thread Received {d} {d}\n", .{ std.time.nanoTimestamp(), val, i });
-    }
-}
 
 pub fn main() !void {
+    const start = try std.time.Instant.now();
+
     // create GPA allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var channel = chanz.Chan(usize).init(allocator);
-    defer channel.deinit();
+    // file path
+    const folder =
+        \\C:\Users\Kyle\Documents\source\OdinOneBillionRows\data
+    ;
+    //const filename = "measurements-1_000.txt";
+    const filename = "measurements-1_000.txt";
+    const fullpath = folder ++ "\\" ++ filename;
 
-    var threads: [6]std.Thread = undefined;
-    for (0..threads.len) |i| {
-        threads[i] = try std.Thread.spawn(.{}, worker, .{ &channel, i + 1 });
+    // open file
+    const file = try std.fs.openFileAbsolute(fullpath, .{ .mode = .read_only });
+    defer file.close();
+    const reader = file.reader();
+
+    // create buffer reader
+    var line_count: u32 = 0;
+    const buffer = try allocator.alloc(u8, 500);
+    defer allocator.free(buffer);
+
+    // create map
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    var arena_allocator = arena.allocator();
+    var station_map = std.StringHashMap(Station).init(allocator);
+    defer station_map.deinit();
+
+    // loop lines
+    while (reader.readUntilDelimiterOrEof(buffer, '\n')) |line| {
+        if (line == null) break;
+        line_count += 1;
+        //std.debug.print("{d}: {?s}\n", .{ line_count, line });
+        processLine(&arena_allocator, line.?, &station_map);
+    } else |err| {
+        std.debug.print("Line Error: {}\n", .{err});
     }
-    defer for (threads) |t| {
-        t.join();
-    };
 
-    var val: usize = 0;
-    for (0..100) |i| {
-        try channel.send(val);
-        if (i > 99) {
-            const dur = 3 * std.time.ns_per_s;
-            std.time.sleep(dur);
-        }
-        val += i;
+    std.debug.print("Line Count: {d}\n", .{line_count});
+
+    var iter = station_map.iterator();
+    while (iter.next()) |entry| {
+        var station = entry.value_ptr;
+        station.avg = station.sum / @as(f32, @floatFromInt(station.count));
+        station.print();
     }
 
-    channel.close();
+    const end = try std.time.Instant.now();
+    const diff = end.since(start);
+    prettyPrintNsDuration(diff);
 }
+
+pub fn processLine(
+    allocator: *std.mem.Allocator,
+    line: []u8,
+    station_map: *std.StringHashMap(Station),
+) void {
+    const foundSplit = std.mem.indexOf(u8, line, ";");
+    if (foundSplit) |idx| {
+        const name = line[0..idx];
+        const valueStr = std.mem.trimRight(u8, line[idx + 1 ..], "\r\n");
+        const valueNum = std.fmt.parseFloat(f32, valueStr) catch |err| {
+            std.debug.print("Failed to parse float: {}\n", .{err});
+            return;
+        };
+
+        const key = allocator.dupe(u8, name) catch |err| {
+            std.debug.print("Failed to dupe key: {}\n", .{err});
+            return;
+        };
+        const entry = station_map.getOrPut(key) catch |err| {
+            std.debug.print("Failed GetOrPut: {}\n", .{err});
+            return;
+        };
+        if (entry.found_existing) {
+            entry.value_ptr.update(valueNum);
+        } else {
+            entry.value_ptr.* = Station.create(key, valueNum);
+        }
+    } else {
+        std.debug.print("Failed split: {?s}\n", .{line});
+    }
+}
+
+pub fn prettyPrintNsDuration(diff: u64) void {
+    const float_diff = @as(f64, @floatFromInt(diff));
+    const hours = float_diff / @as(f64, std.time.ns_per_hour);
+    const minutes = @mod(float_diff, std.time.ns_per_hour) / @as(f64, std.time.ns_per_min);
+    const seconds = @mod(float_diff, std.time.ns_per_min) / @as(f64, std.time.ns_per_s);
+    const milliseconds = @mod(float_diff, std.time.ns_per_s) / @as(f64, std.time.ns_per_ms);
+    std.debug.print("{d:.0}h:{d:.0}m:{d:.0}s:{d:.3}ms\n", .{ hours, minutes, seconds, milliseconds });
+}
+
+const Station = struct {
+    name: []const u8,
+    count: i32,
+    avg: f32,
+    sum: f32,
+    min: f32,
+    max: f32,
+
+    pub fn create(name: []const u8, value: f32) Station {
+        return .{
+            .name = name,
+            .count = 1,
+            .avg = 0,
+            .sum = value,
+            .min = value,
+            .max = value,
+        };
+    }
+    pub fn update(self: *Station, value: f32) void {
+        self.count += 1;
+        self.sum += value;
+        if (value < self.min) self.min = value;
+        if (value > self.max) self.max = value;
+    }
+    pub fn print(self: *Station) void {
+        std.debug.print("{s};{d};{d:.1};{d:.1};{d:.1}\n", .{ self.name, self.count, self.avg, self.min, self.max });
+    }
+};
