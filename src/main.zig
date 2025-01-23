@@ -12,7 +12,8 @@ pub fn main() !void {
     const folder =
         \\C:\Users\Kyle\Documents\source\OdinOneBillionRows\data
     ;
-    const filename = "measurements-1_000.txt";
+    //const filename = "measurements-1_000.txt";
+    const filename = "measurements-1_000_000.txt";
     const fullpath = folder ++ "\\" ++ filename;
 
     // open file
@@ -25,16 +26,50 @@ pub fn main() !void {
     const buffer = try allocator.alloc(u8, 500);
     defer allocator.free(buffer);
 
+    // create map
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    var arena_allocator = arena.allocator();
+    var station_map = std.StringHashMap(Station).init(allocator);
+    defer station_map.deinit();
+
     // loop lines
     while (reader.readUntilDelimiterOrEof(buffer, '\n')) |line| {
         if (line == null) break;
         line_count += 1;
-        std.debug.print("{d}: {?s}\n", .{ line_count, line });
+        //std.debug.print("{d}: {?s}\n", .{ line_count, line });
+
+        const foundSplit = std.mem.indexOf(u8, line.?, ";");
+        if (foundSplit) |idx| {
+            const name = line.?[0..idx];
+            const valueStr = std.mem.trimRight(u8, line.?[idx + 1 ..], "\r\n");
+            const valueNum = try std.fmt.parseFloat(f32, valueStr);
+
+            const key = try arena_allocator.dupe(u8, name);
+            const entry = station_map.getOrPut(key) catch |err| {
+                std.debug.print("Failed GetOrPut: {}\n", .{err});
+                return;
+            };
+            if (entry.found_existing) {
+                entry.value_ptr.update(valueNum);
+            } else {
+                entry.value_ptr.* = Station.create(key, valueNum);
+            }
+        } else {
+            std.debug.print("Failed split: {?s}\n", .{line});
+        }
     } else |err| {
         std.debug.print("Line Error: {}\n", .{err});
     }
 
     std.debug.print("Line Count: {d}\n", .{line_count});
+
+    var iter = station_map.iterator();
+    while (iter.next()) |entry| {
+        var station = entry.value_ptr;
+        station.avg = station.sum / @as(f32, @floatFromInt(station.count));
+        station.print();
+    }
 
     const end = try std.time.Instant.now();
     const diff = end.since(start);
@@ -49,3 +84,32 @@ pub fn prettyPrintNsDuration(diff: u64) void {
     const milliseconds = @mod(float_diff, std.time.ns_per_s) / @as(f64, std.time.ns_per_ms);
     std.debug.print("{d:.0}h:{d:.0}m:{d:.0}s:{d:.3}ms\n", .{ hours, minutes, seconds, milliseconds });
 }
+
+const Station = struct {
+    name: []const u8,
+    count: i32,
+    avg: f32,
+    sum: f32,
+    min: f32,
+    max: f32,
+
+    pub fn create(name: []const u8, value: f32) Station {
+        return .{
+            .name = name,
+            .count = 1,
+            .avg = 0,
+            .sum = value,
+            .min = value,
+            .max = value,
+        };
+    }
+    pub fn update(self: *Station, value: f32) void {
+        self.count += 1;
+        self.sum += value;
+        if (value < self.min) self.min = value;
+        if (value > self.max) self.max = value;
+    }
+    pub fn print(self: *Station) void {
+        std.debug.print("{s};{d};{d:.1};{d:.1};{d:.1}\n", .{ self.name, self.count, self.avg, self.min, self.max });
+    }
+};

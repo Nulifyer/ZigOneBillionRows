@@ -5,7 +5,7 @@
             "name": "Debug",
             "request": "launch",
             "type": "cppvsdbg",
-            "preLaunchTask": "build",
+            "preLaunchTask": "build-Debug",
             "cwd": "${workspaceFolder}",
             "program": "${workspaceRoot}/zig-out/bin/${workspaceFolderBasename}.exe",
             "args": [],
