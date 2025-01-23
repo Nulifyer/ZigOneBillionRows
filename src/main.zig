@@ -37,8 +37,15 @@ pub fn main() !void {
     std.debug.print("Line Count: {d}\n", .{line_count});
 
     const end = try std.time.Instant.now();
-    const elapsed1: f64 = @floatFromInt(end.since(start));
-    std.debug.print("Time elapsed is: {d:.3}ms\n", .{
-        elapsed1 / std.time.ns_per_ms,
-    });
+    const diff = end.since(start);
+    prettyPrintNsDuration(diff);
+}
+
+pub fn prettyPrintNsDuration(diff: u64) void {
+    const float_diff = @as(f64, @floatFromInt(diff));
+    const hours = float_diff / @as(f64, std.time.ns_per_hour);
+    const minutes = @mod(float_diff, std.time.ns_per_hour) / @as(f64, std.time.ns_per_min);
+    const seconds = @mod(float_diff, std.time.ns_per_min) / @as(f64, std.time.ns_per_s);
+    const milliseconds = @mod(float_diff, std.time.ns_per_s) / @as(f64, std.time.ns_per_ms);
+    std.debug.print("{d:.0}h:{d:.0}m:{d:.0}s:{d:.3}ms\n", .{ hours, minutes, seconds, milliseconds });
 }
