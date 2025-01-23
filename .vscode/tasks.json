@@ -9,15 +9,16 @@
                 "kind": "build",
                 "isDefault": true
             },
+            "problemMatcher": "$zig",
             "presentation": {
                 "echo": true,
+                "revealProblems": "onProblem",
                 "reveal": "silent",
                 "focus": false,
                 "panel": "shared",
                 "showReuseMessage": false,
-                "clear": true
+                "clear": true,
             },
-            "problemMatcher": "$zig"
-        }
+        },
     ]
 }
