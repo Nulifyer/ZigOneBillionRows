@@ -1,4 +1,5 @@
 const std = @import("std");
+const chan = @import("./channel.zig");
 
 pub fn main() !void {
     const start = try std.time.Instant.now();
@@ -13,7 +14,7 @@ pub fn main() !void {
         \\C:\Users\Kyle\Documents\source\OdinOneBillionRows\data
     ;
     //const filename = "measurements-1_000.txt";
-    const filename = "measurements-1_000_000.txt";
+    const filename = "measurements-1_000.txt";
     const fullpath = folder ++ "\\" ++ filename;
 
     // open file
@@ -32,6 +33,23 @@ pub fn main() !void {
     var arena_allocator = arena.allocator();
     var station_map = std.StringHashMap(Station).init(allocator);
     defer station_map.deinit();
+
+    // threads
+    var channel = chan.Channel([]const u8).init(arena_allocator);
+    defer channel.deinit();
+
+    const thread = struct {
+        fn func(c: *T) !void {
+            const val = try c.recv();
+            std.debug.print("{d} Thread Received {d}\n", .{ std.time.milliTimestamp(), val });
+        }
+    };
+
+    const t = try std.Thread.spawn(.{}, thread.func, .{&chan});
+    defer t.join();
+    std.time.sleep(1_000_000_000);
+    const val: u8 = 10;
+    try chan.send(val);
 
     // loop lines
     while (reader.readUntilDelimiterOrEof(buffer, '\n')) |line| {
