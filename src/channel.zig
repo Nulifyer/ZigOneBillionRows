@@ -1,3 +1,6 @@
+// This is imported from
+// https://github.com/erik-dunteman/chanz
+
 const std = @import("std");
 
 const ChanError = error{
@@ -11,7 +14,7 @@ pub fn Chan(comptime T: type) type {
     return BufferedChan(T, 0);
 }
 
-fn BufferedChan(comptime T: type, comptime bufSize: u8) type {
+pub fn BufferedChan(comptime T: type, comptime bufSize: u8) type {
     return struct {
         const Self = @This();
         const bufType = [bufSize]?T;
