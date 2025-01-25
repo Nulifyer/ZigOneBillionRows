@@ -43,7 +43,8 @@ pub fn main() !void {
     // create threads
     var wg: std.Thread.WaitGroup = undefined;
     wg.reset();
-    var threads: [6]std.Thread = undefined;
+    const num_threads = 12;
+    var threads: [num_threads]std.Thread = undefined;
     for (&threads) |*thread| {
         thread.* = try std.Thread.spawn(.{}, worker, .{ &channel, &wg, &arena_allocator, &station_map, &station_map_mutex });
     }
